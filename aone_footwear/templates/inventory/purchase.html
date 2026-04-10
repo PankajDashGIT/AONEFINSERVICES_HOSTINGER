@@ -1,0 +1,247 @@
+{% extends 'inventory/base.html' %}
+{% load static %}
+{% block content %}
+
+<h3 class="mb-3">Stock Purchase Entry</h3>
+
+<!-- =======================
+     TOP SECTION
+======================= -->
+<div class="row">
+
+    <!-- LEFT PANEL : PRODUCT ENTRY -->
+    <div class="col-md-5">
+        <div class="card p-3">
+            <h5>Select Product</h5>
+
+            <!-- PRODUCT SELECTION : 2 ROW LAYOUT -->
+            <div class="row">
+                <div class="col-md-6 mb-2">
+                    <label>Brand</label>
+                    <select id="pur_brand" class="form-select">
+                        <option value="">Select Brand</option>
+                        {% for b in brands %}
+                            <option value="{{ b.id }}">{{ b.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-6 mb-2">
+                    <label>Category</label>
+                    <select id="pur_category" class="form-select">
+                        <option value="">Select Category</option>
+                        {% for c in categories %}
+                            <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-2">
+                    <label>Section</label>
+                    <select id="pur_section" class="form-select">
+                        <option value="">Select Section</option>
+                        {% for s in sections %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-6 mb-2">
+                    <label>Size</label>
+                    <select id="pur_size" class="form-select">
+                        <option value="">Select Size</option>
+                        {% for sz in sizes %}
+                            <option value="{{ sz.id }}">{{ sz.value }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-6 mb-2">
+                    <label>Size</label>
+                    <select id="pur_color" class="form-select">
+                        <option value="">Select Color</option>
+                        {% for clr in colors %}
+                            <option value="{{ clr.id }}">{{ clr.value }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+            </div>
+
+            <hr>
+
+            <!-- PRICE PANEL -->
+            <div class="row">
+                <div class="col-md-4 mb-2">
+                    <label>MRP</label>
+                    <input type="number" id="pur_mrp" class="form-control">
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label>Billing Price</label>
+                    <input type="number" id="pur_price" class="form-control">
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label>GST %</label>
+                    <input type="number" id="pur_gst" class="form-control" value="0">
+                </div>
+            </div>
+
+            <!-- DISCOUNT -->
+            <div class="row">
+                <div class="col-md-4 mb-2">
+                    <label>Disc %</label>
+                    <input type="number" id="pur_disc_percent" class="form-control" readonly>
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label>Disc (Rs)</label>
+                    <input type="number" id="pur_disc_rs" class="form-control" readonly>
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label>Qty</label>
+                    <input type="number" id="pur_qty" class="form-control" value="1">
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <label>MSP (Auto)</label>
+                <input type="number" id="pur_msp" class="form-control" readonly>
+            </div>
+
+            <div class="d-grid gap-2">
+                <button class="btn btn-success" id="btn_add_for_billing">
+                    + Add Item
+                </button>
+                <button class="btn btn-secondary d-none" id="btn_cancel_edit">
+                    Cancel Edit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL : IMPORT + BILL -->
+    <div class="col-md-7">
+
+        <!-- IMPORT PURCHASE -->
+        <div class="card p-3 mb-3 border-primary">
+            <h5>Import Purchase</h5>
+
+            <div class="d-flex gap-2">
+                <input type="file"
+                       id="import_purchase_file"
+                       class="form-control"
+                       accept=".csv,.xlsx">
+
+                <button type="button"
+                        id="btn_import_purchase"
+                        class="btn btn-outline-primary">
+                    📥 Import
+                </button>
+            </div>
+
+            <div class="small text-muted mt-2">
+                Upload Excel / CSV file to auto-create purchase items
+                <a href="{% static 'inventory/templates/purchase_import_template.xlsx' %}"
+                   class="small text-decoration-none ms-2">
+                    ⬇ Download sample Excel template
+                </a>
+            </div>
+        </div>
+
+        <!-- PURCHASE FORM -->
+        <form method="post" id="purchase_form">
+            {% csrf_token %}
+
+            <div class="card p-3 mb-3">
+                <h5>Purchase Bill Details</h5>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <label>Supplier</label>
+                        {{ form.supplier }}
+                    </div>
+
+                    <div class="col-md-3">
+                        <label>Bill No</label>
+                        {{ form.bill_number }}
+                        <div id="bill_check_msg" class="small mt-1"></div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label>Bill Date</label>
+                        {{ form.bill_date }}
+                    </div>
+                </div>
+
+                <div class="mt-2">
+                    <label>Payment Mode</label>
+                    {{ form.payment_mode }}
+                </div>
+            </div>
+
+            <input type="hidden" name="items_json" id="items_json">
+
+            <button class="btn btn-primary w-100" type="submit">
+                Submit Purchase
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- =======================
+     PURCHASE ITEMS GRID
+     FULL WIDTH BOTTOM
+======================= -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Purchase Items</h5>
+            </div>
+
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0" id="purchase_items_table">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Brand</th>
+                            <th>Category</th>
+                            <th>Section</th>
+                            <th>Size</th>
+                            <th>Color</th>
+                            <th>MRP</th>
+                            <th>Price</th>
+                            <th>Disc (Rs)</th>
+                            <th>Disc (%)</th>
+                            <th>GST</th>
+                            <th>Qty</th>
+                            <th>MSP</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="card-footer">
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Total Items:</strong> <span id="tot_items">0</span>
+                        &nbsp; | &nbsp;
+                        <strong>Total Qty:</strong> <span id="tot_qty">0</span>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <strong>Approx Amount:</strong>
+                        ₹<span id="tot_amount">0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'inventory/js/purchase.js' %}?v=FINAL_LAYOUT"></script>
+{% endblock %}

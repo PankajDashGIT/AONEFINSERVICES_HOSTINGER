@@ -1,0 +1,239 @@
+{% extends 'inventory/base.html' %}
+{% load static %}
+{% block content %}
+
+<h3>Whole Sale Billing / POS</h3>
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="card p-3 mb-3">
+            <h6>Select Product</h6>
+
+            <div class="mb-2">
+                <label>Brand</label>
+                <select id="bill_brand" class="form-select">
+                    <option value="">Select Brand</option>
+                    {% for b in brands %}
+                        <option value="{{ b.id }}">{{ b.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-2">
+                <label>Category</label>
+                <select id="bill_category" class="form-select">
+                    <option value="">Select Category</option>
+                </select>
+            </div>
+
+            <div class="mb-2">
+                <label>Section</label>
+                <select id="bill_section" class="form-select">
+                    <option value="">Select Section</option>
+                </select>
+            </div>
+
+            <div class="mb-2">
+                <label>Size</label>
+                <select id="bill_size" class="form-select">
+                    <option value="">Select Size</option>
+                </select>
+            </div>
+
+            <div class="mb-2">
+                <label>Color</label>
+                <select id="bill_color" class="form-select">
+                    <option value="">Select Color</option>
+                </select>
+            </div>
+
+            <div class="small text-muted mb-2">
+                Product stock: <span id="bill_stock_qty">0</span>
+            </div>
+
+            <div class="mb-2">
+                <label>MRP</label>
+                <select id="bill_mrp" class="form-select">
+                    <option value="" disabled selected>Select MRP</option>
+                </select>
+            </div>
+
+            <div class="mb-2">
+                <label>Qty</label>
+                <input id="bill_qty" type="number" value="1" class="form-control">
+            </div>
+
+<!--            <div class="mb-2">-->
+<!--                <label>Default Discount (%)</label>-->
+<!--                <input id="bill_default_disc" class="form-control" readonly>-->
+<!--            </div>-->
+
+            <div class="mb-2">
+                <div class="form-check">
+                    <input type="checkbox" id="bill_manual_disc_check" class="form-check-input">
+                    <label class="form-check-label">Apply Manual Discount (Rs)</label>
+                </div>
+                <div id="bill_manual_disc_container" class="mt-2" style="display:none">
+                    <input id="bill_manual_disc" type="number" value="0" class="form-control">
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <label>Selling Price</label>
+                <input id="bill_selling_price" class="form-control">
+
+                <div class="small text-muted mt-1" hidden>
+                    MSP: ₹ <span id="msp_value">0.00</span>
+                </div>
+
+                <div id="msp_warning"
+                     class="small fw-bold text-danger mt-1"
+                     style="display:none;">
+                    ⚠ Selling price is below minimum allowed price
+                </div>
+            </div>
+
+            <button id="btn_add_to_bill" class="btn btn-success w-100">
+                Add to Bill
+            </button>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <form method="post" id="billing_form">
+            {% csrf_token %}
+            <div class="card mb-3">
+    <div class="card-header">
+        Customer Details
+    </div>
+    <div class="card-body">
+
+        <div class="row g-2">
+            <div class="col-md-6">
+                <label class="form-label">Customer Mobile</label>
+                <input type="text"
+                       name="customer_mobile"
+                       id="customer_mobile"
+                       class="form-control"
+                       placeholder="10-digit mobile number"
+                       maxlength="10">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Customer Name</label>
+                <input type="text"
+                       name="customer_name"
+                       id="customer_name"
+                       class="form-control"
+                       placeholder="Customer name">
+            </div>
+        </div>
+
+        <div class="form-text text-muted mt-1">
+            Customer name and mobile are mandatory when payment mode is Credit
+        </div>
+
+    </div>
+</div>
+
+            <div class="card mb-3">
+                <div class="card-header">Bill Items</div>
+                <table class="table table-sm mb-0" id="bill_items_table">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Brand</th>
+                            <th>Category</th>
+                            <th>Section</th>
+                            <th>Size</th>
+                            <th>Color</th>
+                            <th>Qty</th>
+                            <th>MRP</th>
+                            <th>Price</th>
+                            <th>Disc</th>
+                            <th>GST</th>
+                            <th>Final</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="card p-3">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Total Qty</label>
+                        <input id="totalQty" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Subtotal</label>
+                        <input id="subtotal" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Total GST</label>
+                        <input id="totalGst" class="form-control" readonly>
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <div class="col-md-4">
+                        <label>Total Payment</label>
+                        <input id="totalPayment" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Payment Received</label>
+                        <input id="paymentReceived" class="form-control" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Balance Due</label>
+                        <input id="balanceDue" class="form-control" readonly>
+                    </div>
+                </div>
+
+                <div class="mt-2 small">
+                    CGST: <span id="cgstSplit">0</span><br>
+                    SGST: <span id="sgstSplit">0</span>
+                </div>
+
+                <hr>
+
+                <h6>Payment Mode</h6>
+                <div class="d-flex gap-3">
+                    <label class="btn btn-outline-primary">
+                        <input type="radio" name="payment_type" value="CASH" checked> 💵 CASH
+                    </label>
+                    <label class="btn btn-outline-primary">
+                        <input type="radio" name="payment_type" value="UPI"> 🧾 UPI
+                    </label>
+                    <label class="btn btn-outline-primary">
+                        <input type="radio" name="payment_type" value="CREDIT" > 💳 CREDIT
+                    </label>
+                </div>
+
+                <div id="upi_qr_section" class="mt-3 text-center" style="display:none">
+                    <p><strong>Scan & Pay</strong></p>
+                    <canvas id="upi_qr_canvas"></canvas>
+                    <p class="small">Amount ₹ <span id="upi_amount">0</span></p>
+                </div>
+
+                <hr>
+
+                <button id="submit_bill_btn" class="btn btn-primary">
+                    Submit Bill
+                </button>
+            </div>
+
+            <input type="hidden" name="items_json" id="items_json">
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="{% static 'inventory/js/wholesale_billing.js' %}"></script>
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+{% endblock %}

@@ -1,0 +1,40 @@
+Folder PATH listing for volume New Volume
+Volume serial number is BE0A-0364
+F:.
++---aone_footwear
+¦   +---__pycache__
++---inventory
+¦   +---migrations
+¦   ¦   +---__pycache__
+¦   +---__pycache__
++---static
+¦   +---inventory
+¦       +---css
+¦       +---images
+¦       +---js
+¦       +---templates
++---staticfiles
+¦   +---admin
+¦   ¦   +---css
+¦   ¦   ¦   +---vendor
+¦   ¦   ¦       +---select2
+¦   ¦   +---img
+¦   ¦   ¦   +---gis
+¦   ¦   +---js
+¦   ¦       +---admin
+¦   ¦       +---vendor
+¦   ¦           +---jquery
+¦   ¦           +---select2
+¦   ¦           ¦   +---i18n
+¦   ¦           +---xregexp
+¦   +---inventory
+¦       +---css
+¦       +---images
+¦       +---js
++---templates
+    +---admin
+    +---inventory
+    ¦   +---master
+    ¦   +---reports
+    ¦   +---templatetags
+    +---old

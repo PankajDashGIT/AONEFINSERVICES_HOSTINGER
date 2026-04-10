@@ -1,0 +1,92 @@
+{% extends 'inventory/base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Suppliers</h3>
+    <a href="{% url 'supplier_add' %}" class="btn btn-success">
+        ➕ Add Supplier
+    </a>
+</div>
+
+
+<h3>Suppliers</h3>
+
+<div class="card">
+    <table class="table table-bordered table-hover mb-0">
+        <thead class="table-dark">
+        <tr>
+            <th></th>
+            <th>Name</th>
+            <th>Mobile</th>
+            <th>Address</th>
+            <th class="text-center">Action</th>
+        </tr>
+        </thead>
+        <tbody>
+
+        {% for row in supplier_data %}
+        {% with s=row.supplier %}
+        <tr>
+            <td class="text-center" style="width:50px;">
+                <button class="btn btn-sm btn-outline-primary toggle-bills"
+                        data-target="bills-{{ s.id }}">+
+                </button>
+            </td>
+            <td>{{ s.name }}</td>
+            <td>{{ s.mobile }}</td>
+            <td>{{ s.address|default:"-" }}</td>
+            <td class="text-center">
+                <a href="{% url 'supplier_edit' s.id %}"
+                   class="btn btn-sm btn-outline-primary">
+                    ✏ Edit
+                </a>
+            </td>
+        </tr>
+
+        <tr id="bills-{{ s.id }}" style="display:none;" class="bg-light">
+            <td colspan="5">
+                {% if row.purchases %}
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-secondary">
+                    <tr>
+                        <th>Bill No</th>
+                        <th>Bill Date</th>
+                        <th class="text-end">Pieces</th>
+                        <th class="text-end">Amount (₹)</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for p in row.purchases %}
+                    <tr>
+                        <td>{{ p.bill_number }}</td>
+                        <td>{{ p.bill_date|date:"d-m-Y" }}</td>
+                        <td class="text-end">{{ p.total_qty }}</td>
+                        <td class="text-end">{{ p.total_amt|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="text-muted p-2">No purchases found</div>
+                {% endif %}
+            </td>
+        </tr>
+        {% endwith %}
+        {% endfor %}
+
+        </tbody>
+    </table>
+</div>
+
+<script>
+    document.querySelectorAll(".toggle-bills").forEach(btn => {
+        btn.addEventListener("click", function () {
+            const row = document.getElementById(this.dataset.target);
+            const open = row.style.display === "table-row";
+            row.style.display = open ? "none" : "table-row";
+            this.textContent = open ? "+" : "−";
+        });
+    });
+</script>
+
+{% endblock %}

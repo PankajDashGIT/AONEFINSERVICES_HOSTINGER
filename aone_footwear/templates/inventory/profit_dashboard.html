@@ -1,0 +1,55 @@
+<h3>Profit Dashboard</h3>
+
+<div class="btn-group mb-3">
+    <button onclick="loadProfit('today')" class="btn btn-outline-primary">Today</button>
+    <button onclick="loadProfit('7')" class="btn btn-outline-primary">Last 7 Days</button>
+    <button onclick="loadProfit('15')" class="btn btn-outline-primary">Last 15 Days</button>
+</div>
+
+<div class="row mb-3">
+    <div class="col">
+        <input type="date" id="start_date" class="form-control">
+    </div>
+    <div class="col">
+        <input type="date" id="end_date" class="form-control">
+    </div>
+    <div class="col">
+        <button class="btn btn-success" onclick="loadCustom()">Apply</button>
+    </div>
+</div>
+
+<hr>
+
+<div>
+    <p><strong>Total Sales:</strong> ₹ <span id="sales">0</span></p>
+    <p><strong>Purchase Cost:</strong> ₹ <span id="purchase">0</span></p>
+    <p><strong>Expenses:</strong> ₹ <span id="expense">0</span></p>
+    <h4><strong>Profit:</strong> ₹ <span id="profit">0</span></h4>
+</div>
+
+<script>
+function loadProfit(range) {
+    fetch(`/dashboard/profit/?range=${range}`)
+        .then(res => res.json())
+        .then(updateUI);
+}
+
+function loadCustom() {
+    const s = document.getElementById("start_date").value;
+    const e = document.getElementById("end_date").value;
+
+    fetch(`/dashboard/profit/?range=custom&start_date=${s}&end_date=${e}`)
+        .then(res => res.json())
+        .then(updateUI);
+}
+
+function updateUI(data) {
+    document.getElementById("sales").innerText = data.total_sales.toFixed(2);
+    document.getElementById("purchase").innerText = data.purchase_cost.toFixed(2);
+    document.getElementById("expense").innerText = data.expenses.toFixed(2);
+    document.getElementById("profit").innerText = data.profit.toFixed(2);
+}
+
+// Load today by default
+loadProfit("today");
+</script>

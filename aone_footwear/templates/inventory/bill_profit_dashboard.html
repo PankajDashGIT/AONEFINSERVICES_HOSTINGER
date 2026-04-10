@@ -1,0 +1,192 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- ================= HEADER ================= -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="fw-bold mb-0">Bill-wise Profit Dashboard</h4>
+            <small class="text-muted">
+                Sales − Purchase Cost − Expenses
+            </small>
+        </div>
+    </div>
+
+    <!-- ================= FILTER CARD ================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+
+                <div class="col-md-3">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" id="start_date" class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">End Date</label>
+                    <input type="date" id="end_date" class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="loadBills()">
+                        <i class="bi bi-search"></i> Load Report
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= SUMMARY CARDS ================= -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted">Total Sales</small>
+                    <h5 class="fw-bold text-primary mt-1">
+                        ₹ <span id="sum_sales">0.00</span>
+                    </h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted">Purchase Cost</small>
+                    <h5 class="fw-bold text-warning mt-1">
+                        ₹ <span id="sum_purchase">0.00</span>
+                    </h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm">
+                <div class="card-body">
+                    <small class="text-muted">Expenses</small>
+                    <h5 class="fw-bold text-danger mt-1">
+                        ₹ <span id="sum_expense">0.00</span>
+                    </h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm border-success">
+                <div class="card-body">
+                    <small class="text-muted">Net Profit</small>
+                    <h5 class="fw-bold mt-1" id="sum_profit">
+                        ₹ 0.00
+                    </h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= TABLE CARD ================= -->
+    <div class="card shadow-sm">
+        <div class="card-header fw-bold">
+            Bill-wise Profit
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Bill No</th>
+                        <th>Date</th>
+                        <th>Payment</th>
+                        <th class="text-end">Sales</th>
+                        <th class="text-end">Purchase</th>
+                        <th class="text-end">Expense</th>
+                        <th class="text-end">Profit</th>
+                    </tr>
+                </thead>
+                <tbody id="bill_table">
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            Select date range and click <b>Load Report</b>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+function loadBills() {
+
+    const s = document.getElementById("start_date").value;
+    const e = document.getElementById("end_date").value;
+
+    if (!s || !e) {
+        alert("Please select start and end date");
+        return;
+    }
+
+    fetch(`/api/dashboard/bill-profit/?start_date=${s}&end_date=${e}`)
+        .then(res => res.json())
+        .then(data => {
+
+            const tbody = document.getElementById("bill_table");
+            tbody.innerHTML = "";
+
+            let sumSales = 0;
+            let sumPurchase = 0;
+            let sumExpense = 0;
+            let sumProfit = 0;
+
+            if (!data.bills.length) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            No data available for selected range
+                        </td>
+                    </tr>`;
+            }
+
+            data.bills.forEach(b => {
+
+                sumSales += b.sales;
+                sumPurchase += b.purchase_cost;
+                sumExpense += b.expenses;
+                sumProfit += b.profit;
+
+                const profitClass = b.profit >= 0
+                    ? "text-success fw-bold"
+                    : "text-danger fw-bold";
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${b.bill_no}</td>
+                        <td>${b.date}</td>
+                        <td>${b.payment_mode}</td>
+                        <td class="text-end">₹ ${b.sales.toFixed(2)}</td>
+                        <td class="text-end">₹ ${b.purchase_cost.toFixed(2)}</td>
+                        <td class="text-end">₹ ${b.expenses.toFixed(2)}</td>
+                        <td class="text-end ${profitClass}">
+                            ₹ ${b.profit.toFixed(2)}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById("sum_sales").innerText = sumSales.toFixed(2);
+            document.getElementById("sum_purchase").innerText = sumPurchase.toFixed(2);
+            document.getElementById("sum_expense").innerText = sumExpense.toFixed(2);
+
+            const profitEl = document.getElementById("sum_profit");
+            profitEl.innerText = `₹ ${sumProfit.toFixed(2)}`;
+            profitEl.className = sumProfit >= 0
+                ? "fw-bold text-success"
+                : "fw-bold text-danger";
+        });
+}
+</script>
+
+{% endblock %}
