@@ -48,7 +48,7 @@
                         <label class="form-label">Category</label>
                         <select name="category" class="form-select" required>
                             {% for key, val in categories %}
-                                <option value="{{ key }}">{{ val }}</option>
+                            <option value="{{ key }}">{{ val }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -58,6 +58,14 @@
                         <input type="text" name="description"
                                class="form-control"
                                placeholder="Optional">
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label">Payment Mode <span class="text-danger">*</span></label>
+                        <select name="payment_mode" class="form-select" required>
+                            <option value="CASH" selected>Cash</option>
+                            <option value="UPI">UPI</option>
+                        </select>
                     </div>
 
                     <div class="mb-3">
@@ -97,64 +105,66 @@
 
         <table class="table table-sm table-bordered mb-0">
             <thead class="table-dark">
-                <tr>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th class="text-end">Amount</th>
-                    <th>Status</th>
-                    <th width="180">Actions</th>
-                </tr>
+            <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th class="text-end">Amount</th>
+                <th>Payment Mode</th>
+                <th>Status</th>
+                <th width="180">Actions</th>
+            </tr>
             </thead>
             <tbody>
-                {% for e in expenses %}
-                <tr>
-                    <td>{{ e.expense_date }}</td>
-                    <td>{{ e.category }}</td>
-                    <td>{{ e.description }}</td>
-                    <td class="text-end">{{ e.amount }}</td>
+            {% for e in expenses %}
+            <tr>
+                <td>{{ e.expense_date }}</td>
+                <td>{{ e.category }}</td>
+                <td>{{ e.description }}</td>
+                <td class="text-end">{{ e.amount }}</td>
+                <td>{{ e.payment_mode }}</td>
 
-                    <td>
-                        {% if e.approved %}
-                            <span class="badge bg-success">Approved</span>
-                        {% else %}
-                            <span class="badge bg-warning text-dark">
+                <td>
+                    {% if e.approved %}
+                    <span class="badge bg-success">Approved</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">
                                 Pending
                             </span>
-                        {% endif %}
-                    </td>
+                    {% endif %}
+                </td>
 
-                    <td>
-                        {% if is_admin %}
-                            {% if not e.approved %}
-                                <a href="{% url 'expense_approve' e.id %}"
-                                   class="btn btn-sm btn-success">
-                                    Approve
-                                </a>
-                            {% endif %}
-                            <a href="{% url 'expense_delete' e.id %}"
-                               class="btn btn-sm btn-danger"
-                               onclick="return confirm('Delete this expense?')">
-                                Delete
-                            </a>
-                        {% endif %}
+                <td>
+                    {% if is_admin %}
+                    {% if not e.approved %}
+                    <a href="{% url 'expense_approve' e.id %}"
+                       class="btn btn-sm btn-success">
+                        Approve
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'expense_delete' e.id %}"
+                       class="btn btn-sm btn-danger"
+                       onclick="return confirm('Delete this expense?')">
+                        Delete
+                    </a>
+                    {% endif %}
 
-                        {% if e.created_by == request.user or is_admin %}
-                            <a href="{% url 'expense_edit' e.id %}"
-                               class="btn btn-sm btn-warning">
-                                Edit
-                            </a>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6"
-                        class="text-center text-muted py-3">
-                        No expenses found
-                    </td>
-                </tr>
-                {% endfor %}
+                    {% if e.created_by == request.user or is_admin %}
+                    <a href="{% url 'expense_edit' e.id %}"
+                       class="btn btn-sm btn-warning">
+                        Edit
+                    </a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6"
+                    class="text-center text-muted py-3">
+                    No expenses found
+                </td>
+            </tr>
+            {% endfor %}
             </tbody>
         </table>
 
