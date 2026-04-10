@@ -1,331 +1,379 @@
-console.log("sales_dashboard.js loaded (enhanced UI)");
+console.log("sales_dashboard loaded");
 
 let currentPage = 1;
 let currentPageSize = 10;
-let currentStartDate = "";
-let currentEndDate = "";
-let currentSearch = "";
+let currentRows = [];
+let collectPaymentModal = null;
+let salesTrendChart = null;
+let paymentModeChart = null;
 
-// Chart instances
-let paymentChart = null;
-let trendChart = null;
-
-// ----------------------- helpers -----------------------
-
-function formatMoney(val) {
-    const num = parseFloat(val || 0);
-    return num.toFixed(2);
+function formatMoney(v) {
+    return parseFloat(v || 0).toFixed(2);
 }
 
-function animateNumber(el, target, duration = 400) {
-    const start = parseFloat(el.innerText.replace(/[^\d.-]/g, "")) || 0;
-    const diff = target - start;
-    const startTime = performance.now();
-
-    function step(now) {
-        const progress = Math.min(1, (now - startTime) / duration);
-        const value = start + diff * progress;
-        el.innerText = formatMoney(value);
-        if (progress < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
+function getCsrfToken() {
+    const tokenInput = document.querySelector("#collect_payment_form input[name='csrfmiddlewaretoken']");
+    return tokenInput ? tokenInput.value : "";
 }
 
-// ----------------------- main loader -----------------------
+function getFilters() {
+    return {
+        start_date: document.getElementById("filter_start").value,
+        end_date: document.getElementById("filter_end").value,
+        search: document.getElementById("search_box").value.trim(),
+    };
+}
 
-function loadDashboard() {
+function buildDashboardUrl() {
+    const filters = getFilters();
     const params = new URLSearchParams({
         page: currentPage,
         page_size: currentPageSize,
-        start_date: currentStartDate,
-        end_date: currentEndDate,
-        search: currentSearch,
     });
 
-    fetch(`/api/sales/dashboard-data/?${params.toString()}`)
-        .then(res => res.json())
-        .then(data => {
-            updateKPIs(data.kpis);
-            updatePayments(data.payments);
-            updateBestSelling(data.best_selling);
-            updateTable(data.table);
-            updateMeta(data.meta);
-            buildChartsFromData(data.payments, data.table.rows);
-        })
-        .catch(err => {
-            console.error("Dashboard load error", err);
-        });
+    if (filters.start_date) params.set("start_date", filters.start_date);
+    if (filters.end_date) params.set("end_date", filters.end_date);
+    if (filters.search) params.set("search", filters.search);
+
+    return `/api/sales/dashboard-data/?${params.toString()}`;
 }
 
-// ----------------------- KPIs -----------------------
+function buildExportUrl() {
+    const filters = getFilters();
+    const params = new URLSearchParams();
 
-function updateKPIs(kpis) {
-    animateNumber(document.getElementById("kpi_today_sales"), kpis.today_sales);
-    animateNumber(document.getElementById("kpi_last7_sales"), kpis.last_7_sales);
-    animateNumber(document.getElementById("kpi_total_sales"), kpis.total_sales);
+    if (filters.start_date) params.set("start_date", filters.start_date);
+    if (filters.end_date) params.set("end_date", filters.end_date);
+    if (filters.search) params.set("search", filters.search);
 
-    const qtyEl = document.getElementById("kpi_total_qty");
-    const startQty = parseInt(qtyEl.innerText || "0", 10);
-    const targetQty = kpis.total_qty || 0;
-    if (startQty !== targetQty) {
-        qtyEl.innerText = targetQty;
-    }
+    return `/sales/export/?${params.toString()}`;
 }
 
-// ----------------------- Payment summary -----------------------
-
-function updatePayments(payments) {
-    const container = document.getElementById("payment_modes_container");
-    container.innerHTML = "";
-
-    if (!payments || payments.length === 0) {
-        container.innerHTML = `<div class="text-muted small">No sales yet.</div>`;
-        return;
-    }
-
-    const total = payments.reduce((sum, p) => sum + (p.amount || 0), 0) || 1;
-
-    payments.forEach(p => {
-        const percent = (p.amount / total) * 100;
-        const row = document.createElement("div");
-        row.className = "mb-3";
-
-        row.innerHTML = `
-            <div class="d-flex justify-content-between">
-                <span class="small fw-semibold">${p.mode}</span>
-                <span class="small">₹ ${formatMoney(p.amount)}</span>
-            </div>
-            <div class="progress" style="height:6px;">
-                <div class="progress-bar" role="progressbar"
-                     style="width:${percent.toFixed(1)}%;" aria-valuenow="${percent}"
-                     aria-valuemin="0" aria-valuemax="100"></div>
-            </div>
+function renderPaymentCell(row) {
+    if (row.can_collect_payment) {
+        return `
+            <button
+                type="button"
+                class="btn btn-sm btn-warning"
+                onclick="openCollectPaymentModal(${row.bill_id})">
+                Collect Payment
+            </button>
         `;
-        container.appendChild(row);
-    });
-}
-
-// ----------------------- Best selling article -----------------------
-
-function updateBestSelling(best) {
-    const container = document.getElementById("best_article_container");
-    container.innerHTML = "";
-
-    if (!best) {
-        container.innerHTML = `<div class="text-muted small">No sales yet.</div>`;
-        return;
     }
 
-    container.innerHTML = `
-        <div class="fw-semibold mb-1">${best.name}</div>
-        <div class="small text-muted mb-2">Top by quantity sold</div>
-        <div class="display-6 mb-1">${best.qty}</div>
-        <div class="small text-muted">Revenue: ₹ ${formatMoney(best.amount)}</div>
-    `;
+    return row.payment;
 }
 
-// ----------------------- Table & Pagination -----------------------
+function buildTable(table) {
+    currentRows = table.rows || [];
 
-function updateTable(table) {
     const tbody = document.getElementById("sales_table_body");
     tbody.innerHTML = "";
 
-    if (!table.rows || table.rows.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center text-muted py-3">
-                    No sales found for selected date range.
-                </td>
-            </tr>
-        `;
-    } else {
-        table.rows.forEach(r => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${r.bill_no}</td>
-                <td>${r.date}</td>
-                <td>${r.article}</td>
-                <td>${r.category}</td>
-                <td>${r.size}</td>
-                <td class="text-end">${r.qty}</td>
-                <td class="text-end">${formatMoney(r.amount)}</td>
-                <td>${r.payment}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    }
-
-    document.getElementById("current_page").innerText = table.page || 1;
-    document.getElementById("total_pages").innerText = table.total_pages || 1;
-
-    document.getElementById("btn_prev_page").disabled = (table.page <= 1);
-    document.getElementById("btn_next_page").disabled = (table.page >= table.total_pages);
-
-    // Summary badge (rows count)
-    const badge = document.getElementById("summary_badge");
-    if (table.total_rows > 0) {
-        badge.classList.remove("d-none");
-        badge.innerText = `${table.total_rows} rows`;
-    } else {
-        badge.classList.add("d-none");
-    }
-}
-
-function updateMeta(meta) {
-    const text = document.getElementById("table_meta_text");
-    text.innerText = `Showing sales from ${meta.start_date} to ${meta.end_date}`;
-}
-
-// ----------------------- Charts -----------------------
-
-function buildChartsFromData(payments, tableRows) {
-    buildPaymentChart(payments);
-    buildTrendChart(tableRows);
-}
-
-function buildPaymentChart(payments) {
-    const ctx = document.getElementById("chart_payment_modes");
-    if (!ctx) return;
-
-    const labels = payments && payments.length ? payments.map(p => p.mode) : [];
-    const dataVals = payments && payments.length ? payments.map(p => p.amount) : [];
-
-    if (paymentChart) {
-        paymentChart.destroy();
-    }
-
-    if (!labels.length) {
-        // nothing to draw
+    if (!currentRows.length) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center">No Data</td></tr>`;
         return;
     }
 
-    paymentChart = new Chart(ctx, {
-        type: "doughnut",
+    currentRows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+        <td><a href="/invoice/${r.bill_id}/" target="_blank">${r.bill_no}</a></td>
+        <td>${r.date}</td>
+        <td class="text-center">${r.customer_name || ""}</td>
+        <td class="text-center">${r.customer_mobile || ""}</td>
+        <td class="text-center">${r.qty}</td>
+        <td class="text-center">Rs. ${formatMoney(r.amount)}</td>
+        <td class="text-center">Rs. ${formatMoney(r.total_payment)}</td>
+        <td class="text-center">Rs. ${formatMoney(r.payment_received)}</td>
+        <td class="text-center">Rs. ${formatMoney(r.balance_due)}</td>
+        <td class="text-center">${renderPaymentCell(r)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function updatePagination(table) {
+    const page = table.page || 1;
+    const totalPages = table.total_pages || 1;
+
+    document.getElementById("current_page").innerText = page;
+    document.getElementById("total_pages").innerText = totalPages;
+    document.getElementById("btn_prev_page").disabled = page <= 1;
+    document.getElementById("btn_next_page").disabled = page >= totalPages;
+    document.getElementById("table_meta_text").innerText = `Showing ${table.rows.length} of ${table.total_rows} bills`;
+}
+
+function updateKpis(kpis) {
+    document.getElementById("kpi_today_sales").innerText = formatMoney(kpis.today_sales);
+    document.getElementById("kpi_last7_sales").innerText = formatMoney(kpis.last7_sales);
+    document.getElementById("kpi_total_sales").innerText = formatMoney(kpis.total_sales);
+    document.getElementById("kpi_total_qty").innerText = kpis.total_qty;
+    document.getElementById("kpi_pending_credit").innerText = formatMoney(kpis.pending_credit);
+}
+
+function updateFilterInputs(meta) {
+    document.getElementById("filter_start").value = meta.start_date || "";
+    document.getElementById("filter_end").value = meta.end_date || "";
+}
+
+function updatePaymentModes(payments) {
+    const container = document.getElementById("payment_modes_container");
+    if (!payments.length) {
+        container.innerHTML = `<div class="text-muted small">No sales yet.</div>`;
+        return;
+    }
+
+    const total = payments.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+
+    container.innerHTML = payments.map((item) => {
+        const amount = parseFloat(item.amount || 0);
+        const percent = total > 0 ? (amount / total) * 100 : 0;
+
+        return `
+            <div class="mb-3">
+                <div class="d-flex justify-content-end align-items-center mb-1 small text-muted">
+                    <span>Rs. ${formatMoney(amount)}</span>
+                </div>
+                <div class="progress" style="height: 22px;">
+                    <div
+                        class="progress-bar d-flex align-items-center justify-content-end pe-2 fw-semibold"
+                        role="progressbar"
+                        style="width: ${Math.max(percent, 12).toFixed(2)}%;"
+                        aria-valuenow="${percent.toFixed(2)}"
+                        aria-valuemin="0"
+                        aria-valuemax="100">${item.mode}</div>
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+function buildSalesTrendChart(trend) {
+    const ctx = document.getElementById("chart_sales_trend");
+    if (!ctx) return;
+
+    if (salesTrendChart) {
+        salesTrendChart.destroy();
+    }
+
+    salesTrendChart = new Chart(ctx, {
+        type: "line",
         data: {
-            labels: labels,
+            labels: trend.map((item) => item.label),
             datasets: [{
-                data: dataVals,
+                label: "Sales Amount",
+                data: trend.map((item) => item.amount),
+                borderColor: "#0d6efd",
+                backgroundColor: "rgba(13, 110, 253, 0.15)",
+                tension: 0.3,
+                fill: true
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: "bottom" }
-            },
-            cutout: "55%"
-        }
-    });
-}
-
-function buildTrendChart(tableRows) {
-    const ctx = document.getElementById("chart_sales_trend");
-    if (!ctx) return;
-
-    // Group by date
-    const map = new Map();
-    (tableRows || []).forEach(r => {
-        const date = r.date;
-        const amt = parseFloat(r.amount || 0);
-        map.set(date, (map.get(date) || 0) + amt);
-    });
-
-    const labels = Array.from(map.keys()).sort((a, b) => {
-        const [da, ma, ya] = a.split("-").map(Number);
-        const [db, mb, yb] = b.split("-").map(Number);
-        return new Date(ya, ma - 1, da) - new Date(yb, mb - 1, db);
-    });
-
-    const dataVals = labels.map(d => map.get(d));
-
-    if (trendChart) {
-        trendChart.destroy();
-    }
-
-    if (!labels.length) {
-        return;
-    }
-
-    trendChart = new Chart(ctx, {
-        type: "bar",
-        data: {
-            labels: labels,
-            datasets: [{
-                label: "Sales Amount",
-                data: dataVals,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true }
+                legend: { display: false }
             }
         }
     });
 }
 
-// ----------------------- events -----------------------
+function buildPaymentModeChart(payments) {
+    const ctx = document.getElementById("chart_payment_modes");
+    if (!ctx) return;
 
-document.addEventListener("DOMContentLoaded", () => {
-    const rowsSelect = document.getElementById("rows_per_page");
-    currentPageSize = parseInt(rowsSelect.value, 10);
+    if (paymentModeChart) {
+        paymentModeChart.destroy();
+    }
 
-    document.getElementById("btn_apply_filter").addEventListener("click", () => {
-        currentStartDate = document.getElementById("filter_start").value.trim();
-        currentEndDate = document.getElementById("filter_end").value.trim();
+    paymentModeChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: payments.map((item) => item.mode),
+            datasets: [{
+                label: "Amount",
+                data: payments.map((item) => item.amount),
+                backgroundColor: ["#0d6efd", "#198754", "#ffc107", "#dc3545", "#6f42c1"]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: "y",
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+function loadDashboard() {
+    fetch(buildDashboardUrl())
+        .then((res) => res.json())
+        .then((data) => {
+            updateKpis(data.kpis);
+            updateFilterInputs(data.meta);
+            updatePaymentModes(data.payments || []);
+            buildSalesTrendChart(data.trend || []);
+            buildPaymentModeChart(data.payments || []);
+            buildTable(data.table);
+            updatePagination(data.table);
+        })
+        .catch((err) => {
+            console.error("Dashboard load error", err);
+        });
+}
+
+function findRowByBillId(billId) {
+    return currentRows.find((row) => row.bill_id === billId);
+}
+
+function openCollectPaymentModal(billId) {
+    const row = findRowByBillId(billId);
+    if (!row) return;
+
+    document.getElementById("collect_bill_id").value = row.bill_id;
+    document.getElementById("collect_bill_no").value = row.bill_no;
+    document.getElementById("collect_balance_due").value = `Rs. ${formatMoney(row.balance_due)}`;
+    document.getElementById("collect_amount").value = formatMoney(row.balance_due);
+    document.getElementById("collect_amount").max = formatMoney(row.balance_due);
+    document.querySelector("input[name='collect_payment_mode'][value='CASH']").checked = true;
+
+    const errorBox = document.getElementById("collect_payment_error");
+    errorBox.classList.add("d-none");
+    errorBox.innerText = "";
+
+    collectPaymentModal.show();
+}
+
+function submitCollectedPayment(event) {
+    event.preventDefault();
+
+    const billId = document.getElementById("collect_bill_id").value;
+    const amount = parseFloat(document.getElementById("collect_amount").value || 0);
+    const selectedMode = document.querySelector("input[name='collect_payment_mode']:checked");
+    const errorBox = document.getElementById("collect_payment_error");
+    const submitBtn = document.getElementById("collect_payment_submit_btn");
+    const row = findRowByBillId(parseInt(billId, 10));
+
+    errorBox.classList.add("d-none");
+    errorBox.innerText = "";
+
+    if (!row) {
+        errorBox.innerText = "Unable to find bill details.";
+        errorBox.classList.remove("d-none");
+        return;
+    }
+
+    if (!(amount > 0)) {
+        errorBox.innerText = "Enter a valid amount.";
+        errorBox.classList.remove("d-none");
+        return;
+    }
+
+    if (amount > parseFloat(row.balance_due || 0)) {
+        errorBox.innerText = "Collected amount cannot be greater than balance due.";
+        errorBox.classList.remove("d-none");
+        return;
+    }
+
+    submitBtn.disabled = true;
+
+    fetch(`/api/sales/${billId}/collect-payment/`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": getCsrfToken(),
+            "X-Requested-With": "XMLHttpRequest"
+        },
+        body: new URLSearchParams({
+            amount: amount.toFixed(2),
+            payment_mode: selectedMode ? selectedMode.value : "CASH"
+        })
+    })
+        .then((res) => res.json())
+        .then((data) => {
+            if (!data.success) {
+                throw new Error(data.error || "Unable to collect payment");
+            }
+
+            collectPaymentModal.hide();
+            loadDashboard();
+        })
+        .catch((err) => {
+            errorBox.innerText = err.message || "Unable to collect payment";
+            errorBox.classList.remove("d-none");
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+        });
+}
+
+function applyFilters() {
+    currentPage = 1;
+    loadDashboard();
+}
+
+function clearFilters() {
+    document.getElementById("filter_start").value = "";
+    document.getElementById("filter_end").value = "";
+    document.getElementById("search_box").value = "";
+    currentPage = 1;
+    loadDashboard();
+}
+
+function exportSales() {
+    window.location.href = buildExportUrl();
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    const modalEl = document.getElementById("collectPaymentModal");
+    if (modalEl) {
+        collectPaymentModal = new bootstrap.Modal(modalEl);
+    }
+
+    const form = document.getElementById("collect_payment_form");
+    if (form) {
+        form.addEventListener("submit", submitCollectedPayment);
+    }
+
+    document.getElementById("btn_apply_filter").addEventListener("click", applyFilters);
+    document.getElementById("btn_clear_filter").addEventListener("click", clearFilters);
+    document.getElementById("btn_export_excel").addEventListener("click", exportSales);
+
+    document.getElementById("search_box").addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            applyFilters();
+        }
+    });
+
+    document.getElementById("rows_per_page").addEventListener("change", function () {
+        currentPageSize = parseInt(this.value || 10, 10);
         currentPage = 1;
         loadDashboard();
     });
 
-    document.getElementById("btn_clear_filter").addEventListener("click", () => {
-        document.getElementById("filter_start").value = "";
-        document.getElementById("filter_end").value = "";
-        currentStartDate = "";
-        currentEndDate = "";
-        currentPage = 1;
-        currentSearch = "";
-        document.getElementById("search_box").value = "";
-        loadDashboard();
-    });
-
-    rowsSelect.addEventListener("change", () => {
-        currentPageSize = parseInt(rowsSelect.value, 10);
-        currentPage = 1;
-        loadDashboard();
-    });
-
-    document.getElementById("btn_prev_page").addEventListener("click", () => {
+    document.getElementById("btn_prev_page").addEventListener("click", function () {
         if (currentPage > 1) {
             currentPage -= 1;
             loadDashboard();
         }
     });
 
-    document.getElementById("btn_next_page").addEventListener("click", () => {
+    document.getElementById("btn_next_page").addEventListener("click", function () {
         currentPage += 1;
         loadDashboard();
     });
 
-    const searchBox = document.getElementById("search_box");
-    let searchTimeout = null;
-    searchBox.addEventListener("input", () => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            currentSearch = searchBox.value.trim();
-            currentPage = 1;
-            loadDashboard();
-        }, 400);
-    });
-
-    document.getElementById("btn_export_excel").addEventListener("click", () => {
-        const params = new URLSearchParams({
-            start_date: currentStartDate,
-            end_date: currentEndDate,
-            search: currentSearch,
-        });
-        window.location.href = `/sales/export/?${params.toString()}`;
-    });
-
     loadDashboard();
 });
+
+window.openCollectPaymentModal = openCollectPaymentModal;

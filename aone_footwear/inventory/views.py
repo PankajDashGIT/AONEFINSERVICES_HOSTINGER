@@ -1,8 +1,8 @@
 # inventory/views.py
 from django.contrib.auth.models import User, Group
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
+from django.shortcuts import render, get_object_or_404
 import csv
+from .models import Expense
 import io
 import json
 from datetime import datetime, timedelta
@@ -17,7 +17,6 @@ from django.db.models import Q
 from django.db.models.functions import Coalesce
 from django.db.models.functions import TruncMonth, TruncDate
 from django.http import HttpResponse, HttpResponseRedirect, HttpResponseForbidden
-from django.http import JsonResponse
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -1199,7 +1198,6 @@ def sales_dashboard_view(request):
 
 @login_required
 def sales_dashboard_data(request):
-
     start_str = request.GET.get("start_date")
     end_str = request.GET.get("end_date")
     search = request.GET.get("search", "").strip()
@@ -1275,6 +1273,34 @@ def sales_dashboard_data(request):
     pending_credit = bills_qs.filter(
         payment_mode="CREDIT"
     ).aggregate(total=Sum("balance_due"))["total"] or 0
+
+    # ---------------- CASH / UPI BALANCE ----------------
+
+    from .models import Expense
+
+    # SALES
+    cash_sales = bills_qs.filter(payment_mode="CASH") \
+                     .aggregate(total=Sum("total_amount"))["total"] or 0
+
+    upi_sales = bills_qs.filter(payment_mode="UPI") \
+                    .aggregate(total=Sum("total_amount"))["total"] or 0
+
+    # EXPENSES (IMPORTANT: ONLY APPROVED)
+    cash_expense = Expense.objects.filter(
+        payment_mode="CASH",
+        approved=True,
+        expense_date__range=[start_date, end_date]
+    ).aggregate(total=Sum("amount"))["total"] or 0
+
+    upi_expense = Expense.objects.filter(
+        payment_mode="UPI",
+        approved=True,
+        expense_date__range=[start_date, end_date]
+    ).aggregate(total=Sum("amount"))["total"] or 0
+
+    # FINAL BALANCE
+    cash_balance = cash_sales - cash_expense
+    upi_balance = upi_sales - upi_expense
 
     # ---------------- Pagination ----------------
 
@@ -1698,13 +1724,30 @@ def expense_chart_data(request):
     return JsonResponse({"labels": [q["category"] for q in qs], "data": [float(q["total"]) for q in qs], })
 
 
-@login_required
+from django.shortcuts import redirect
+from django.contrib import messages
+
 def expense_add(request):
     if request.method == "POST":
-        Expense.objects.create(category=request.POST["category"], description=request.POST.get("description", ""),
-            amount=request.POST["amount"], created_by=request.user, approved=request.user.is_superuser,
-            # Admin auto-approved
+        category = request.POST.get("category")
+        description = request.POST.get("description")
+        amount = request.POST.get("amount")
+        payment_mode = request.POST.get("payment_mode")
+
+        # 🔴 Validation (MANDATORY)
+        if not payment_mode:
+            messages.error(request, "Payment mode is required!")
+            return redirect("expense_management")
+
+        Expense.objects.create(
+            category=category,
+            description=description,
+            amount=amount,
+            payment_mode=payment_mode,
+            created_by=request.user
         )
+
+        messages.success(request, "Expense added successfully!")
         return redirect("expense_management")
 
 

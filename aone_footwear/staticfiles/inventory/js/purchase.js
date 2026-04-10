@@ -68,7 +68,7 @@ function recalcPurchaseFields() {
     }
 
     // ---------- MSP ----------
-    let msp = price + (price * 0.20);
+    let msp = price + (price * 0.74);
     $("#pur_msp").val(msp ? msp.toFixed(2) : "");
 }
 
@@ -83,6 +83,7 @@ function validateProductEntry() {
     const category = $("#pur_category").val();
     const section = $("#pur_section").val();
     const size = $("#pur_size").val();
+    const color = $("#pur_color").val();
     const mrp = $("#pur_mrp").val();
     const price = $("#pur_price").val();
     const qty = $("#pur_qty").val();
@@ -92,6 +93,7 @@ function validateProductEntry() {
     if (!category) missing.push("Category");
     if (!section) missing.push("Section");
     if (!size) missing.push("Size");
+    if (!color) missing.push("Color");
     if (!mrp) missing.push("MRP");
     if (!price) missing.push("Billing Price");
     if (!qty || safeFloat(qty) <= 0) missing.push("Quantity (must be > 0)");
@@ -135,12 +137,12 @@ $("#btn_add_for_billing").click(function (e) {
         category_id: $("#pur_category").val(),
         section_id: $("#pur_section").val(),
         size_id: $("#pur_size").val(),
-
+        color_id: $("#pur_color").val(),
         brand_name: $("#pur_brand option:selected").text(),
         category_name: $("#pur_category option:selected").text(),
         section_name: $("#pur_section option:selected").text(),
         size_name: $("#pur_size option:selected").text(),
-
+        color_names: $("#pur_color option:selected").text(),
         mrp: safeFloat($("#pur_mrp").val()),
         price: safeFloat($("#pur_price").val()),
         discount_percent: safeFloat($("#pur_disc_percent").val()),
@@ -180,6 +182,7 @@ function renderPurchaseTable() {
                 <td>${escapeHtml(i.category_name || "")}</td>
                 <td>${escapeHtml(i.section_name || "")}</td>
                 <td>${escapeHtml(i.size_name || "")}</td>
+                <td>${escapeHtml(i.color_name || "")}</td>
 
                 <td>${safeFloat(i.mrp).toFixed(2)}</td>
                 <td>${safeFloat(i.price).toFixed(2)}</td>
@@ -205,12 +208,6 @@ $("#btn_cancel_edit").click(function (e) {
     clearProductEntry();
 });
 
-/* -------------------------------
-   RENDER TABLE / EDIT / REMOVE
---------------------------------*/
-
-
-
 function escapeHtml(unsafe) {
     return (unsafe + '')
         .replace(/&/g, "&amp;")
@@ -228,6 +225,7 @@ function editItem(index) {
     $("#pur_category").val(i.category_id);
     $("#pur_section").val(i.section_id);
     $("#pur_size").val(i.size_id);
+    $("#pur_color").val(i.color_id);
 
     $("#pur_mrp").val(i.mrp);
     $("#pur_price").val(i.price);
@@ -249,10 +247,6 @@ function removeItem(index) {
     updateItemsJSON();
 }
 
-/* -------------------------------
-   TOTALS
---------------------------------*/
-
 function renderTotals() {
     let totItems = purchaseItems.length;
     let totQty = purchaseItems.reduce((s, x) => s + (x.qty || 0), 0);
@@ -262,10 +256,6 @@ function renderTotals() {
     $("#tot_qty").text(totQty);
     $("#tot_amount").text(totAmount.toFixed(2));
 }
-
-/* -------------------------------
-   SUBMIT VALIDATION
---------------------------------*/
 
 $("#purchase_form").on("submit", function (e) {
     // ensure items_json is current
@@ -330,20 +320,29 @@ $(document).ready(function () {
             }
         });
     }
-
-    // Trigger validation when supplier changes or bill number typed
     $("#id_supplier").on("change", checkBillExists);
     $("#id_bill_number").on("keyup change", checkBillExists);
 
 });
 
-/* ================================
-   IMPORT PURCHASE FILE
-================================ */
-
-/* ================================
-   IMPORT PURCHASE FILE (REAL)
-================================ */
+/* -------------------------------
+   COLOR LOADING FOR PURCHASE
+--------------------------------*/
+//$("#pur_size").on("change", function () {
+//    const sizeId = $(this).val();
+//
+//    $("#pur_color").html(`<option value="">Select Color</option>`);
+//
+//    if (!sizeId) return;
+//
+//    $.get("/api/colors/", { size_id: sizeId }, function (data) {
+//        data.forEach(c => {
+//            $("#pur_color").append(
+//                `<option value="${c.id}">${c.value}</option>`
+//            );
+//        });
+//    });
+//});
 
 $("#btn_import_purchase").on("click", function () {
 
@@ -378,22 +377,20 @@ $("#btn_import_purchase").on("click", function () {
             return;
         }
 
-        // 🔥 FORCE RESET ARRAY (important)
         purchaseItems.length = 0;
 
-        // 🔥 PUSH ITEMS ONE-BY-ONE (prevents overwrite bugs)
         data.items.forEach(i => {
             purchaseItems.push({
                 brand_id: i.brand_id,
                 category_id: i.category_id,
                 section_id: i.section_id,
                 size_id: i.size_id,
-
+                color_id: i.color_id,
                 brand_name: i.brand_name,
                 category_name: i.category_name,
                 section_name: i.section_name,
                 size_name: i.size_name,
-
+                color_name: i.color_name,
                 mrp: Number(i.mrp),
                 price: Number(i.price),
                 discount_rs: Number(i.discount_rs || 0),
@@ -401,7 +398,6 @@ $("#btn_import_purchase").on("click", function () {
                 gst_percent: Number(i.gst_percent || 0),
                 qty: Number(i.qty),
                 msp: Number(i.msp || 0),
-
                 gst_amount: Number(i.gst_amount || 0),
                 line_total: Number(i.line_total || 0)
             });
@@ -418,3 +414,32 @@ $("#btn_import_purchase").on("click", function () {
     });
 });
 
+// ===============================
+// LOAD COLORS WHEN SIZE CHANGES
+// ===============================
+$(document).on("change", "#pur_size", function () {
+    const sizeId = $(this).val();
+
+    console.log("Size selected:", sizeId);
+
+    $("#pur_color").html(`<option value="">Select Color</option>`);
+
+    if (!sizeId) return;
+
+    $.ajax({
+        url: "/api/colors/",
+        data: { size_id: sizeId },
+        success: function (data) {
+            console.log("Colors received:", data);
+
+            data.forEach(c => {
+                $("#pur_color").append(
+                    `<option value="${c.id}">${c.value}</option>`
+                );
+            });
+        },
+        error: function (err) {
+            console.error("Color API error", err);
+        }
+    });
+});

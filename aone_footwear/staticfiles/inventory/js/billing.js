@@ -1,369 +1,285 @@
-// inventory/static/inventory/js/billing.js
-
+/* ================= GLOBAL ================= */
 let billItems = [];
-let purchaseItems = [];
-let data = null;
 
-// global array that holds items already added to the bill
-// billItems should be filled when you click "Add to Bill"
-
-function updateTotals() {
-    let totalQty = 0;
-    let subtotal = 0;
-    let totalGst = 0;
-
-    billItems.forEach(item => {
-        const qty = Number(item.qty) || 0;
-        const finalPrice = Number(item.final_price || item.price) || 0;   // selling price per unit
-        const gstPercent = Number(item.gst_percent) || 0;
-
-        totalQty += qty;
-
-        const lineAmount = qty * finalPrice;
-        subtotal += lineAmount;
-
-        const lineGst = (lineAmount * gstPercent) / 100;
-        totalGst += lineGst;
-    });
-
-    const totalQtyInput = document.getElementById('totalQty');
-    const subtotalInput = document.getElementById('subtotal');
-    const totalGstInput = document.getElementById('totalGst');
-    const cgstSplitSpan = document.getElementById('cgstSplit');
-    const sgstSplitSpan = document.getElementById('sgstSplit');
-
-    if (totalQtyInput) totalQtyInput.value = totalQty;
-    if (subtotalInput) subtotalInput.value = subtotal.toFixed(2);
-    if (totalGstInput) totalGstInput.value = totalGst.toFixed(2);
-
-    const halfGst = totalGst / 2;
-    if (cgstSplitSpan) cgstSplitSpan.innerText = halfGst.toFixed(2);
-    if (sgstSplitSpan) sgstSplitSpan.innerText = halfGst.toFixed(2);
-}
-
-
+/* ================= SELLING PRICE ================= */
 function recalcSellingPrice() {
-    const mrp = parseFloat($('#bill_mrp option:selected').text()) || 0;
-    const defaultDisc = parseFloat($('#bill_default_disc').val()) || 0;
-    const manualChecked = $('#bill_manual_disc_check').is(':checked');
-    const manualDiscRs = manualChecked ? parseFloat($('#bill_manual_disc').val()) || 0 : 0;
+    const opt = $('#bill_mrp option:selected');
+    if (!opt.val()) return;
 
-    // Calculate selling price:
-    // First apply default percent discount, then subtract manual Rs discount (if enabled)
-    const priceAfterDefault = mrp - (mrp * defaultDisc / 100);
-    let price = priceAfterDefault - manualDiscRs;
+    const mrp = parseFloat(opt.data('mrp')) || 0;
+//    const defaultDisc = parseFloat($('#bill_default_disc').val()) || 0;
+    const msp = parseFloat(opt.data('msp')) || 0;
+
+    const manualDisc = $('#bill_manual_disc_check').is(':checked')
+        ? parseFloat($('#bill_manual_disc').val()) || 0
+        : 0;
+    let price = Math.floor(mrp / 10) * 10 - manualDisc;
+//    let price = mrp - (mrp * defaultDisc / 100)
     if (price < 0) price = 0;
 
-    $('#bill_selling_price').val(price.toFixed(2));
+    $('#bill_selling_price').val(price.toFixed(0));
+    $('#msp_value').text(msp.toFixed(0));
+
+    if (msp > 0 && price < msp) {
+        $('#msp_warning').show();
+        $('#submit_bill_btn').prop('disabled', true);
+    } else {
+        $('#msp_warning').hide();
+        $('#submit_bill_btn').prop('disabled', false);
+    }
 }
 
+/* ================= TOTALS ================= */
+function updateTotals() {
+    let qty = 0, sub = 0, gst = 0;
+
+    billItems.forEach(i => {
+        qty += i.qty;
+        sub += i.final;
+        gst += i.gst_amount;
+    });
+
+    $('#totalQty').val(qty);
+    $('#subtotal').val(sub.toFixed(0));
+    $('#totalGst').val(gst.toFixed(0));
+    $('#cgstSplit').text((gst / 2).toFixed(0));
+    $('#sgstSplit').text((gst / 2).toFixed(0));
+    updatePaymentSummary();
+
+    refreshUPIQR();
+}
+
+function updatePaymentSummary() {
+    const totalPayment = parseFloat($('#subtotal').val() || 0);
+    const mode = $("input[name='payment_type']:checked").val();
+    const paymentReceived = mode === 'CREDIT' ? 0 : totalPayment;
+    const balanceDue = totalPayment - paymentReceived;
+
+    $('#totalPayment').val(totalPayment.toFixed(0));
+    $('#paymentReceived').val(paymentReceived.toFixed(0));
+    $('#balanceDue').val(balanceDue.toFixed(0));
+}
+
+function validateCreditCustomerDetails() {
+    const mode = $("input[name='payment_type']:checked").val();
+    const mobile = $('#customer_mobile').val().trim();
+    const name = $('#customer_name').val().trim();
+
+    if (mode === 'CREDIT' && (!mobile || !name)) {
+        alert('Customer name and mobile are mandatory for credit billing.');
+        return false;
+    }
+
+    return true;
+}
+
+function syncCustomerRequirement() {
+    const isCredit = $("input[name='payment_type']:checked").val() === 'CREDIT';
+    $('#customer_mobile, #customer_name').prop('required', isCredit);
+}
+
+/* ================= TABLE ================= */
 function refreshBillTable() {
-    const $tbody = $('#bill_items_table tbody');
-    $tbody.empty();
-    let totalQty = 0, subtotal = 0, totalGst = 0;
+    const tbody = $('#bill_items_table tbody').empty();
 
-    billItems.forEach((item, idx) => {
-        totalQty += item.qty;
-        subtotal += item.final;
-        totalGst += item.gst_amount;
-
-        $tbody.append(`
+    billItems.forEach((i, idx) => {
+        tbody.append(`
             <tr>
-                <td>${item.brand}</td>
-                <td>${item.category}</td>
-                <td>${item.section}</td>
-                <td>${item.size}</td>
-                <td>${item.qty}</td>
-                <td>${item.mrp.toFixed(2)}</td>
-                <td>${item.price.toFixed(2)}</td>
-                <td>${item.discount.toFixed(2)}%</td>
-                <td>${item.gst_percent.toFixed(2)}%</td>
-                <td>${item.final.toFixed(2)}</td>
-                <td><button type="button" class="btn btn-sm btn-danger" onclick="removeBillItem(${idx})">X</button></td>
+                <td>${i.brand}</td>
+                <td>${i.category}</td>
+                <td>${i.section}</td>
+                <td>${i.size}</td>
+                <td>${i.color}</td>
+                <td>${i.qty}</td>
+                <td>${i.mrp}</td>
+                <td>${i.price}</td>
+                <td>${i.discount.toFixed(0)}%</td>
+                <td>${i.gst_percent}%</td>
+                <td>${i.final.toFixed(0)}</td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-danger"
+                            onclick="removeItem(${idx})">X</button>
+                </td>
             </tr>
         `);
     });
 
-    $('#totalQty').val(totalQty);
-    $('#subtotal').val(subtotal.toFixed(2));
-    $('#totalGst').val(totalGst.toFixed(2));
-    $('#cgstSplit').text((totalGst/2).toFixed(2));
-    $('#sgstSplit').text((totalGst/2).toFixed(2));
     $('#items_json').val(JSON.stringify(billItems));
-}
-
-function removeBillItem(idx) {
-    billItems.splice(idx, 1);
-    refreshBillTable();
     updateTotals();
 }
 
-/* helper to read CSRF cookie (Django default) */
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
+function removeItem(i) {
+    billItems.splice(i, 1);
+    refreshBillTable();
 }
 
+/* ================= EVENTS ================= */
 $(function () {
-    // Selling price recalculation when manual value or MRP/default discount changes
-    $('#bill_manual_disc, #bill_mrp, #bill_default_disc').on('input change', recalcSellingPrice);
 
-    // Robust change handler that reads data-default-disc and data-stock safely
-    $('#bill_mrp').on('change', function () {
-        const sel = this;
-        const opt = (sel.selectedOptions && sel.selectedOptions[0]) || sel.options[sel.selectedIndex];
-        if (!opt) return;
+    // ================= ENABLE SEARCH =================
+    $('#bill_brand, #bill_category, #bill_section, #bill_size, #bill_color, #bill_mrp').select2({
+        width: '100%',
+        placeholder: "Search...",
+        allowClear: true
+    });
 
-        const defaultDisc = opt.getAttribute('data-default-disc') || $(opt).data('defaultDisc') || 0;
-        const stock = opt.getAttribute('data-stock') || $(opt).data('stock') || 0;
+    $('#bill_manual_disc').on('input', recalcSellingPrice);
 
-        $('#bill_default_disc').val(defaultDisc);
-        $('#bill_stock_qty').text(stock);
+    $('#bill_manual_disc_check').on('change', function () {
+        $('#bill_manual_disc_container').toggle(this.checked);
         recalcSellingPrice();
     });
 
-    // Toggle manual discount UI
-    $('#bill_manual_disc_check').on('change', function () {
-        if ($(this).is(':checked')) {
-            $('#bill_manual_disc_container').show();
-        } else {
-            $('#bill_manual_disc_container').hide();
-            $('#bill_manual_disc').val('0');
-            recalcSellingPrice();
-        }
+    syncCustomerRequirement();
+    updatePaymentSummary();
+
+    $(document).on('change', '#bill_mrp', function () {
+        const opt = $(this).find(':selected');
+        $('#bill_default_disc').val(opt.data('defaultDisc') || 0);
+        recalcSellingPrice();
     });
 
     $('#btn_add_to_bill').on('click', function () {
+
+        const opt = $('#bill_mrp option:selected');
+        if (!opt.val()) return alert('Select MRP');
+
         const qty = parseInt($('#bill_qty').val()) || 0;
-        const stockQty = parseInt($('#bill_stock_qty').text()) || 0;
+        if (qty <= 0) return alert('Invalid quantity');
 
-        if (qty <= 0 || qty > stockQty) {
-            alert('Invalid quantity or exceeds stock.');
-            if (qty > stockQty) $('#bill_qty').val(stockQty);
-            return;
-        }
+        const mrp = parseFloat(opt.data('mrp'));
+        const gst = parseFloat(opt.data('gst')) || 0;
+        const price = parseFloat($('#bill_selling_price').val());
 
-        const brandText = $('#bill_brand option:selected').text();
-        const categoryText = $('#bill_category option:selected').text();
-        const sectionText = $('#bill_section option:selected').text();
-        const sizeText = $('#bill_size option:selected').text();
-        const productId = $('#bill_mrp').val();
-        if (!productId) {
-            alert('Select MRP / product.');
-            return;
-        }
-
-        const mrp = parseFloat($('#bill_mrp option:selected').text()) || 0;
-        const price = parseFloat($('#bill_selling_price').val()) || 0;
-        const discount = mrp > 0 ? (1 - price / mrp) * 100 : 0;
-        const gstPercent = parseFloat($('#bill_mrp option:selected').data('gst')) || 0;
-
-        // Manual discount validation: if manual discount is enabled, ensure it does not exceed 15% of MRP
-        const manualEnabled = $('#bill_manual_disc_check').is(':checked');
-        const manualDiscRs = manualEnabled ? parseFloat($('#bill_manual_disc').val()) || 0 : 0;
-        const maxAllowed = mrp * 0.15;
-        if (manualEnabled && manualDiscRs > maxAllowed) {
-            alert(`Manual discount cannot exceed  Max ₹${maxAllowed.toFixed(2)}.`);
-            return;
-        }
-
-        const gstAmount = price * qty * gstPercent / 100;
-        const finalAmount = price * qty + gstAmount;
+        const total = price * qty;
+        const base = total * 100 / (100 + gst);
 
         billItems.push({
-            product_id: productId,
-            brand: brandText,
-            category: categoryText,
-            section: sectionText,
-            size: sizeText,
-            qty: qty,
-            mrp: mrp,
-            price: price,
-            discount: discount,
-            gst_percent: gstPercent,
-            gst_amount: gstAmount,
-            final: finalAmount
+            purchase_item_id: opt.val(),
+            brand: $('#bill_brand option:selected').text(),
+            category: $('#bill_category option:selected').text(),
+            section: $('#bill_section option:selected').text(),
+            size: $('#bill_size option:selected').text(),
+            color: $('#bill_color option:selected').text(),
+            qty,
+            mrp,
+            price,
+            discount: (1 - price / mrp) * 100,
+            gst_percent: gst,
+            gst_amount: total - base,
+            final: total
         });
 
         refreshBillTable();
-        updateTotals();
     });
 
-    // Confirm on submit: show confirmation popup and only submit if confirmed
     $('#billing_form').on('submit', function (e) {
-        e.preventDefault();
-
-        // Basic validation: there must be at least one item
-        if (billItems.length === 0) {
-            alert('Please add at least one item to the bill before submitting.');
+        if (!billItems.length) {
+            e.preventDefault();
+            alert('Add at least one item to the bill.');
             return;
         }
 
-        if (!confirm('Are you sure you want to submit the bill?')) {
-            return;
+        if (!validateCreditCustomerDetails()) {
+            e.preventDefault();
         }
+    });
+});
 
-        // Prepare form data and include items_json (ensure server accepts multipart/form-data or JSON)
-        const $form = $(this);
-        const url = $form.attr('action') || window.location.href;
-        // Use FormData so CSRF token from form is included automatically if in a hidden input
-        const formEl = $form.get(0);
-        const formData = new FormData(formEl);
-        // make sure items are included/updated
-        formData.set('items_json', JSON.stringify(billItems));
+/* ================= SIZE → COLOR ================= */
+$(document).on('change', '#bill_size', function () {
 
-        const csrftoken = getCookie('csrftoken');
+    $('#bill_color').html('<option value="">Select Color</option>').trigger('change.select2');
+    $('#bill_mrp').html('<option value="" disabled selected>Select MRP</option>').trigger('change.select2');
+    $('#bill_stock_qty').text('0');
 
-        $.ajax({
-            url: url,
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            headers: {
-                'X-CSRFToken': csrftoken,
-                'Accept': 'application/json'
-            },
-            success: function (resp) {
-                // Expect JSON response with invoice_url
-                // Example: { success: true, invoice_url: "/invoice/123/print/?download=1" }
-                try {
-                    if (typeof resp === 'string') resp = JSON.parse(resp);
-                } catch (e) { /* ignore */ }
+    $.get('/ajax/get-colors/', {
+        brand: $('#bill_brand').val(),
+        category: $('#bill_category').val(),
+        section: $('#bill_section').val(),
+        size: $(this).val()
+    }, function (res) {
+        res.colors.forEach(c => {
+            $('#bill_color').append(`<option value="${c.id}">${c.name}</option>`);
+        });
 
-                if (resp && resp.success && resp.invoice_url) {
-                    // Redirect to invoice print page; include download=1 to auto-download PDF
-                    window.location.href = resp.invoice_url;
-                } else if (resp && resp.redirect_url) {
-                    window.location.href = resp.redirect_url;
-                } else {
-                    // fallback: submit normally
-                    // If server doesn't return JSON, do a normal form submit as last resort
-                    formEl.submit();
-                }
-            },
-            error: function (xhr, status, err) {
-                alert('Failed to submit bill. See console for details.');
-                console.error('Billing submit error', status, err, xhr.responseText);
-            }
+        $('#bill_color').trigger('change.select2');   // ✅ FIXED
+    });
+});
+
+/* ================= COLOR → MRP ================= */
+$(document).on('change', '#bill_color', function () {
+
+    const $mrp = $('#bill_mrp');
+    $mrp.html('<option value="" disabled selected>Select MRP</option>').trigger('change.select2');
+    $('#bill_stock_qty').text('0');
+
+    $.get('/ajax/get-product-id/', {
+        brand: $('#bill_brand').val(),
+        category: $('#bill_category').val(),
+        section: $('#bill_section').val(),
+        size: $('#bill_size').val(),
+        color: $(this).val()
+    }, function (res) {
+
+        if (!res.product_id) return;
+
+        $.get('/ajax/product-mrps/', { product_id: res.product_id }, function (resp) {
+
+            let totalStock = 0;
+            resp.results.forEach(p => {
+                totalStock += p.stock;
+                $mrp.append(`
+                    <option value="${p.purchase_item_id}"
+                            data-mrp="${p.mrp}"
+                            data-gst="${p.gst}"
+                            data-default-disc="${p.default_disc}"
+                            data-msp="${p.msp}">
+                        ₹ ${p.mrp} (Stock: ${p.stock})
+                    </option>
+                `);
+            });
+
+            $('#bill_stock_qty').text(totalStock);
+            $('#bill_mrp').trigger('change.select2');   // ✅ FIXED
         });
     });
+});
 
-    // Purchase MSP = MRP * 1.15 and discount interlink (unchanged)
-    function recalcPurchase() {
-        const mrp = parseFloat($('#pur_mrp').val()) || 0;
-        const discPercent = parseFloat($('#pur_disc_percent').val()) || 0;
-        const discRs = parseFloat($('#pur_disc_rs').val()) || 0;
-        let price = parseFloat($('#pur_price').val()) || 0;
+/* ================= CUSTOMER AUTO FILL ================= */
+$('#customer_mobile').on('blur', function () {
 
-        // priority – if percent typed, compute price & discRs
-        if (document.activeElement.id === 'pur_disc_percent') {
-            price = mrp - (mrp * discPercent / 100);
-            $('#pur_price').val(price.toFixed(2));
-            $('#pur_disc_rs').val((mrp - price).toFixed(2));
-        } else if (document.activeElement.id === 'pur_disc_rs') {
-            price = mrp - discRs;
-            $('#pur_price').val(price.toFixed(2));
-            $('#pur_disc_percent').val(((discRs / mrp) * 100).toFixed(2));
-        } else if (document.activeElement.id === 'pur_price') {
-            const disc = mrp - price;
-            $('#pur_disc_rs').val(disc.toFixed(2));
-            $('#pur_disc_percent').val(((disc / mrp) * 100).toFixed(2));
+    const mobile = $(this).val().trim();
+    if (!/^[6-9]\d{9}$/.test(mobile)) return;
+
+    $.get('/ajax/get-customer/', { mobile }, function (res) {
+        if (res.found) {
+            $('#customer_name').val(res.name);
         }
-
-        $('#pur_msp').val((mrp * 1.15).toFixed(2));
-    }
-
-    $('#pur_mrp, #pur_disc_percent, #pur_disc_rs, #pur_price').on('input', recalcPurchase);
-
-//    $('#bill_stock_qty').text(data.stock_qty);
-//    $('#bill_qty').attr('max', data.stock_qty);
-
-    // Purchase add button (unchanged)
-    $('#btn_add_for_billing').on('click', function () {
-        const qty = parseInt($('#pur_qty').val()) || 0;
-        if (qty <= 0) {
-            alert('Quantity must be > 0');
-            return;
-        }
-        const brandText = $('#pur_brand option:selected').text();
-        const categoryText = $('#pur_category option:selected').text();
-        const sectionText = $('#pur_section option:selected').text();
-        const sizeText = $('#pur_size option:selected').text();
-        if (!$('#pur_size').val()) {
-            alert('Select product hierarchy');
-            return;
-        }
-
-        const item = {
-            brand_id: $('#pur_brand').val(),
-            category_id: $('#pur_category').val(),
-            section_id: $('#pur_section').val(),
-            size_id: $('#pur_size').val(),
-            brand: brandText,
-            category: categoryText,
-            section: sectionText,
-            size: sizeText,
-            mrp: parseFloat($('#pur_mrp').val()) || 0,
-            price: parseFloat($('#pur_price').val()) || 0,
-            disc_percent: parseFloat($('#pur_disc_percent').val()) || 0,
-            disc_rs: parseFloat($('#pur_disc_rs').val()) || 0,
-            qty: qty,
-            gst: parseFloat($('#pur_gst').val()) || 0,
-            msp: parseFloat($('#pur_msp').val()) || 0
-        };
-
-        purchaseItems.push(item);
-        $('#pur_items_json').val(JSON.stringify(purchaseItems));
-
-        const $tbody = $('#purchase_items_table tbody');
-        $tbody.append(`
-            <tr>
-                <td>${item.brand}</td>
-                <td>${item.category}</td>
-                <td>${item.section}</td>
-                <td>${item.size}</td>
-                <td>${item.mrp.toFixed(2)}</td>
-                <td>${item.price.toFixed(2)}</td>
-                <td>${item.disc_percent.toFixed(2)}%</td>
-                <td>${item.gst.toFixed(2)}%</td>
-                <td>${item.qty}</td>
-                <td>${item.msp.toFixed(2)}</td>
-                <td></td>
-            </tr>
-        `);
     });
 });
 
-$("#printBtn").on("click", function () {
-    window.print();
-});
+/* ================= UPI QR ================= */
+const UPI_ID = "8260323662-2@ybl";
+const UPI_NAME = "AONE FOOTWEAR";
 
-//$.ajax({
-//    url: "/billing/",
-//    type: "POST",
-//    data: formData,
-//    success: function (resp) {
-//        if (resp.success && resp.invoice_url) {
-//
-//            // Open PDF in a new hidden tab (auto-download)
-//            let pdfWindow = window.open(resp.invoice_url, "_blank");
-//
-//            // After small delay, refresh billing page
-//            setTimeout(function () {
-//                window.location.href = "/billing/";
-//            }, 1500); // 1.5 seconds
-//        }
-//    }
-//});
+function refreshUPIQR() {
+    const mode = $("input[name='payment_type']:checked").val();
+    const amount = parseFloat($('#subtotal').val() || 0);
+
+    if (mode !== 'UPI' || amount <= 0) {
+        $('#upi_qr_section').hide();
+        return;
+    }
+
+    const url = `upi://pay?pa=${UPI_ID}&pn=${UPI_NAME}&am=${amount.toFixed(2)}&cu=INR`;
+    QRCode.toCanvas(document.getElementById('upi_qr_canvas'), url, { width: 220 });
+    $('#upi_amount').text(amount.toFixed(0));
+    $('#upi_qr_section').show();
+}
+
+$(document).on('change', "input[name='payment_type']", function () {
+    syncCustomerRequirement();
+    updatePaymentSummary();
+    refreshUPIQR();
+});

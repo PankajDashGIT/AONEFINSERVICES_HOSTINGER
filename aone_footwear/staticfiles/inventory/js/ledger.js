@@ -6,15 +6,15 @@ const form = document.getElementById("ledger_filters");
 ["led_brand","led_category","led_section","led_size","led_supplier"]
 .forEach(id => {
     const el = document.getElementById(id);
-    el && el.addEventListener("change", () => form.submit());
+    if (el) el.addEventListener("change", () => form.submit());
 });
 
-/* EXPAND / COLLAPSE SINGLE */
+/* EXPAND / COLLAPSE */
 document.addEventListener("click", function (e) {
     if (!e.target.classList.contains("toggle-details")) return;
 
     const btn = e.target;
-    const productId = btn.dataset.productId;   // ✅ FIX
+    const productId = btn.dataset.productId;
     const row = document.getElementById(`details-${productId}`);
     const content = document.getElementById(`details-content-${productId}`);
 
@@ -29,56 +29,36 @@ document.addEventListener("click", function (e) {
     row.style.display = "table-row";
     btn.textContent = "-";
 
-    // Load only once
     if (content.dataset.loaded) return;
 
-    fetch(`/ledger/product-details/${productId}/`)   // ✅ FIX
+    fetch(`/ledger/product-details/${productId}/`)
         .then(r => r.json())
         .then(d => {
-            const profitVal = parseFloat(d.profit);
-            const profitText = isNaN(profitVal) ? "-" : profitVal.toFixed(2);
-
-            let cls = "text-secondary";
-            if (!isNaN(profitVal)) {
-                if (profitVal > 0) cls = "text-success";
-                else if (profitVal < 0) cls = "text-danger";
-            }
-
+            const profit = parseFloat(d.profit);
+            const cls = profit > 0 ? "text-success" : profit < 0 ? "text-danger" : "";
             content.innerHTML = `
                 <table class="table table-sm mb-0">
-                    <tr><th>Last Purchase Date</th><td>${d.purchase_date || "-"}</td></tr>
-                    <tr><th>Last Purchase Price</th><td>₹ ${d.purchase_price || "-"}</td></tr>
-                    <tr><th>Last Sale Date</th><td>${d.sale_date || "-"}</td></tr>
-                    <tr><th>Last Sale Price</th><td>₹ ${d.sale_price || "-"}</td></tr>
-                    <tr><th>Last Invoice No</th><td>${d.sale_invoice || "-"}</td></tr>
-                    <tr>
-                        <th>Profit</th>
-                        <td class="${cls}">₹ ${profitText}</td>
-                    </tr>
+                    <tr><th>Last Purchase</th><td>${d.purchase_date || "-"}</td></tr>
+                    <tr><th>Last Sale</th><td>${d.sale_date || "-"}</td></tr>
+                    <tr><th>Profit</th><td class="${cls}">₹ ${profit.toFixed(2)}</td></tr>
                 </table>
             `;
             content.dataset.loaded = "1";
         })
         .catch(() => {
-            content.innerHTML = "<span class='text-danger'>Failed to load details</span>";
+            content.innerHTML = "<span class='text-danger'>Failed to load</span>";
         });
 });
 
-/* EXPAND ALL */
+/* EXPAND / COLLAPSE ALL */
 document.getElementById("expandAll")?.addEventListener("click", () => {
-    document.querySelectorAll(".toggle-details").forEach(btn => {
-        const productId = btn.dataset.productId;
-        const row = document.getElementById(`details-${productId}`);
-        if (row && row.style.display !== "table-row") btn.click();
-    });
+    document.querySelectorAll(".toggle-details").forEach(btn => btn.click());
 });
 
-/* COLLAPSE ALL */
 document.getElementById("collapseAll")?.addEventListener("click", () => {
     document.querySelectorAll(".toggle-details").forEach(btn => {
-        const productId = btn.dataset.productId;
-        const row = document.getElementById(`details-${productId}`);
-        if (row && row.style.display === "table-row") btn.click();
+        const row = document.getElementById(`details-${btn.dataset.productId}`);
+        if (row?.style.display === "table-row") btn.click();
     });
 });
 
